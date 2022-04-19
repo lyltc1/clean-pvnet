@@ -36,6 +36,9 @@ Another way is to use the following commands.
     pip install -r requirements.txt
     ```
 2. Compile cuda extensions under `lib/csrc`:
+    备注：在3090下面编译出现问题，提示arch_list[-1] += '+PTX' IndexError: list index out of range，
+    通过运行语句 TORCH_CUDA_ARCH_LIST="YOUR_GPUs_CC+PTX" python setup.py build_ext --inplace
+    其中YOUR_GPUs_CC在https://developer.nvidia.com/cuda-gpus网址下面查看，我的3090对应的是8.6
     ```
     ROOT=/path/to/clean-pvnet
     cd $ROOT/lib/csrc
