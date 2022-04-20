@@ -46,6 +46,7 @@ Another way is to use the following commands.
     cd ransac_voting
     python setup.py build_ext --inplace
     cd ../nn
+    备注：这个的编译一定要先export CUDA_HOME 且gcc的version小于10
     python setup.py build_ext --inplace
     cd ../fps
     python setup.py build_ext --inplace
