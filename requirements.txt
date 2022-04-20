@@ -13,7 +13,7 @@ ipdb
 cyglfw3
 pyassimp
 progressbar
-open3d-python
+open3d
 tensorboardX
 cffi
 transforms3d
