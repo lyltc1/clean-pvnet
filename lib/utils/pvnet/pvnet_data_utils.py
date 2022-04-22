@@ -67,6 +67,19 @@ def read_linemod_mask(path, ann_type, cls_idx):
         return (np.asarray(Image.open(path))).astype(np.uint8)
 
 
+def read_linemod_amodal_mask(path, ann_type, cls_idx):
+    if ann_type == 'real':
+        mask = np.array(Image.open(path))
+        if len(mask.shape) == 3:
+            return (mask[..., 0] != 0).astype(np.uint8)
+        else:
+            return (mask != 0).astype(np.uint8)
+    elif ann_type == 'fuse':
+        return (np.asarray(Image.open(path)) != 0).astype(np.uint8)
+    elif ann_type == 'render':
+        return (np.asarray(Image.open(path))).astype(np.uint8)
+
+
 def read_tless_mask(ann_type, path):
     if ann_type == 'real':
         return (np.asarray(Image.open(path))).astype(np.uint8)

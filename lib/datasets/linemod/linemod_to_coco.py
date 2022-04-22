@@ -21,6 +21,14 @@ def read_mask(path, split, cls_idx=1):
         return (np.asarray(Image.open(path))).astype(np.uint8)
 
 
+def read_amodal_mask(path, split):
+    if split == 'train' or split == 'test':
+        return (np.asarray(Image.open(path)) != 0).astype(np.uint8)
+    elif split == 'fuse':
+        return (np.asarray(Image.open(path)) != 0).astype(np.uint8)
+    elif split == 'render':
+        return (np.asarray(Image.open(path))).astype(np.uint8)
+
 def get_model_corners(model):
     min_x, max_x = np.min(model[:, 0]), np.max(model[:, 0])
     min_y, max_y = np.min(model[:, 1]), np.max(model[:, 1])
@@ -103,9 +111,9 @@ def record_occ_ann(model_meta, img_id, ann_id, images, annotations):
         mask_path = os.path.join(data_root, 'masks', cls, '{}.png'.format(ind))
         depth_path = os.path.join(data_root, 'RGB-D', 'depth_noseg',
                 'depth_{:05d}.png'.format(ind))
-
+        amodal_mask_path = os.path.join(data_root, 'amodal_masks', cls, '{}.png'.format(ind))
         ann_id += 1
-        anno = {'mask_path': mask_path, 'depth_path': depth_path,
+        anno = {'mask_path': mask_path, 'depth_path': depth_path, 'amodal_masks_path': amodal_mask_path,
                 'image_id': img_id, 'category_id': 1, 'id': ann_id}
         anno.update({'corner_3d': corner_3d.tolist(), 'corner_2d': corner_2d.tolist()})
         anno.update({'center_3d': center_3d.tolist(), 'center_2d': center_2d.tolist()})
@@ -149,10 +157,11 @@ def record_real_ann(model_meta, img_id, ann_id, images, annotations):
         fps_2d = project(fps_3d, K, pose)
 
         mask_path = os.path.join(data_root, cls, 'mask', '{:04d}.png'.format(ind))
+        amodal_mask_path = os.path.join(data_root, cls, 'amodal_mask', '{}.png'.format(ind))
 
         ann_id += 1
         depth_path = os.path.join('data/linemod_orig', cls, 'data', 'depth{}.dpt'.format(ind))
-        anno = {'mask_path': mask_path, 'depth_path': depth_path,
+        anno = {'mask_path': mask_path, 'depth_path': depth_path, 'amodal_mask_path': amodal_mask_path,
                 'image_id': img_id, 'category_id': 1, 'id': ann_id}
         anno.update({'corner_3d': corner_3d.tolist(), 'corner_2d': corner_2d.tolist()})
         anno.update({'center_3d': center_3d.tolist(), 'center_2d': center_2d.tolist()})
@@ -173,11 +182,15 @@ def record_fuse_ann(model_meta, img_id, ann_id, images, annotations):
     center_3d = model_meta['center_3d']
     fps_3d = model_meta['fps_3d']
     K = model_meta['K']
+    renderer = model_meta['renderer']
 
     fuse_dir = os.path.join(data_root, 'fuse')
     original_K = linemod_K
     ann_num = len(glob.glob(os.path.join(fuse_dir, '*.pkl')))
     cls_idx = linemod_cls_names.index(cls)
+    amodal_mask_dir = os.path.join(fuse_dir, '{}_amodal_mask'.format(cls))
+    os.makedirs(amodal_mask_dir, exist_ok=True)
+
     for ind in tqdm.tqdm(range(ann_num)):
         mask_path = os.path.join(fuse_dir, '{}_mask.png'.format(ind))
         mask_real = read_mask(mask_path, 'fuse', cls_idx + 1)
@@ -201,8 +214,14 @@ def record_fuse_ann(model_meta, img_id, ann_id, images, annotations):
         center_2d = project(center_3d[None], K, pose)[0]
         fps_2d = project(fps_3d, K, pose)
 
+        amodal_mask_path = os.path.join(amodal_mask_dir, '{}.png'.format(ind))
+        depth_img = renderer.render(pose, K, img_size, render_type='depth')
+        amodal_mask_img = (depth_img > 0).astype(np.uint8) * 255
+        Image.fromarray(amodal_mask_img).save(amodal_mask_path)
+
         ann_id += 1
-        anno = {'mask_path': mask_path, 'image_id': img_id, 'category_id': 1, 'id': ann_id}
+        anno = {'mask_path': mask_path, 'amodal_mask_path': amodal_mask_path,
+                'image_id': img_id, 'category_id': 1, 'id': ann_id}
         anno.update({'corner_3d': corner_3d.tolist(), 'corner_2d': corner_2d.tolist()})
         anno.update({'center_3d': center_3d.tolist(), 'center_2d': center_2d.tolist()})
         anno.update({'fps_3d': fps_3d.tolist(), 'fps_2d': fps_2d.tolist()})
@@ -245,7 +264,8 @@ def record_render_ann(model_meta, img_id, ann_id, images, annotations):
         mask_path = os.path.join(render_dir, '{}_depth.png'.format(ind))
 
         ann_id += 1
-        anno = {'mask_path': mask_path, 'image_id': img_id, 'category_id': 1, 'id': ann_id}
+        anno = {'mask_path': mask_path, 'amodal_mask_path': mask_path,
+                'image_id': img_id, 'category_id': 1, 'id': ann_id}
         anno.update({'corner_3d': corner_3d.tolist(), 'corner_2d': corner_2d.tolist()})
         anno.update({'center_3d': center_3d.tolist(), 'center_2d': center_2d.tolist()})
         anno.update({'fps_3d': fps_3d.tolist(), 'fps_2d': fps_2d.tolist()})
@@ -276,7 +296,8 @@ def _linemod_to_coco(cls, split):
         'fps_3d': fps_3d,
         'data_root': data_root,
         'cls': cls,
-        'split': split
+        'split': split,
+        'renderer': renderer
     }
 
     img_id = 0

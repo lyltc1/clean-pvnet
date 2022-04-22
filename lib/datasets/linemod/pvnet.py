@@ -34,16 +34,16 @@ class Dataset(data.Dataset):
 
         cls_idx = linemod_config.linemod_cls_names.index(anno['cls']) + 1
         mask = pvnet_data_utils.read_linemod_mask(anno['mask_path'], anno['type'], cls_idx)
-
-        return inp, kpt_2d, mask
+        amodal_mask = pvnet_data_utils.read_linemod_amodal_mask(anno['amodal_mask_path'], anno['type'])
+        return inp, kpt_2d, mask, amodal_mask
 
     def __getitem__(self, index_tuple):
         index, height, width = index_tuple
         img_id = self.img_ids[index]
 
-        img, kpt_2d, mask = self.read_data(img_id)
+        img, kpt_2d, mask, amodal_mask = self.read_data(img_id)
         if self.split == 'train':
-            inp, kpt_2d, mask = self.augment(img, mask, kpt_2d, height, width)
+            inp, kpt_2d, mask = self.augment(img, mask, amodal_mask, kpt_2d, height, width)
         else:
             inp = img
 
@@ -59,20 +59,22 @@ class Dataset(data.Dataset):
     def __len__(self):
         return len(self.img_ids)
 
-    def augment(self, img, mask, kpt_2d, height, width):
+    def augment(self, img, mask, amodal_mask, kpt_2d, height, width):
         # add one column to kpt_2d for convenience to calculate
         hcoords = np.concatenate((kpt_2d, np.ones((9, 1))), axis=-1)
         img = np.asarray(img).astype(np.uint8)
         foreground = np.sum(mask)
         # randomly mask out to add occlusion
         if foreground > 0:
-            img, mask, hcoords = rotate_instance(img, mask, hcoords, self.cfg.train.rotate_min, self.cfg.train.rotate_max)
-            img, mask, hcoords = crop_resize_instance_v1(img, mask, hcoords, height, width,
-                                                         self.cfg.train.overlap_ratio,
-                                                         self.cfg.train.resize_ratio_min,
-                                                         self.cfg.train.resize_ratio_max)
+            # TODO 对rotate_instance crop_v1 和 crop_fixed_size 函数加入amodal_mask，需要处理一下
+            img, mask, amodal_mask, hcoords = rotate_instance(img, mask, amodal_mask, hcoords,
+                                                              self.cfg.train.rotate_min, self.cfg.train.rotate_max)
+            img, mask, amodal_mask, hcoords = crop_resize_instance_v1(img, mask, amodal_mask, hcoords, height, width,
+                                                                      self.cfg.train.overlap_ratio,
+                                                                      self.cfg.train.resize_ratio_min,
+                                                                      self.cfg.train.resize_ratio_max)
         else:
-            img, mask = crop_or_padding_to_fixed_size(img, mask, height, width)
+            img, mask, amodal_mask = crop_or_padding_to_fixed_size(img, mask, amodal_mask, height, width)
         kpt_2d = hcoords[:, :2]
 
         return img, kpt_2d, mask
