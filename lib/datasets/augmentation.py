@@ -57,16 +57,17 @@ def rotate(img, mask, hcoords, rot_ang_min, rot_ang_max):
     return img, mask, hcoords
 
 
-def rotate_instance(img, mask, hcoords, rot_ang_min, rot_ang_max):
+def rotate_instance(img, mask, amodal_mask, hcoords, rot_ang_min, rot_ang_max):
     h, w = img.shape[0], img.shape[1]
     degree = np.random.uniform(rot_ang_min, rot_ang_max)
     hs, ws = np.nonzero(mask)
     R = cv2.getRotationMatrix2D((np.mean(ws), np.mean(hs)), degree, 1)
     mask = cv2.warpAffine(mask, R, (w, h), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    amodal_mask = cv2.warpAffine(amodal_mask, R, (w, h), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     img = cv2.warpAffine(img, R, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     last_row = np.asarray([[0, 0, 1]], np.float32)
     hcoords = np.matmul(hcoords, np.concatenate([R, last_row], 0).transpose())
-    return img, mask, hcoords
+    return img, mask, amodal_mask, hcoords
 
 
 def flip(img, mask, hcoords):
@@ -123,7 +124,7 @@ def crop_or_padding(img, mask, hcoords, hratio, wratio):
     return out_img, out_mask, hcoords,
 
 
-def crop_or_padding_to_fixed_size_instance(img, mask, hcoords, th, tw, overlap_ratio=0.5):
+def crop_or_padding_to_fixed_size_instance(img, mask, amodal_mask, hcoords, th, tw, overlap_ratio=0.5):
     h, w, _ = img.shape
     hs, ws = np.nonzero(mask)
 
@@ -145,6 +146,7 @@ def crop_or_padding_to_fixed_size_instance(img, mask, hcoords, th, tw, overlap_r
 
     img = img[hbeg:hend, wbeg:wend]
     mask = mask[hbeg:hend, wbeg:wend]
+    amodal_mask = amodal_mask[hbeg:hend, wbeg:wend]
 
     hcoords[:, 0] -= wbeg * hcoords[:, 2]
     hcoords[:, 1] -= hbeg * hcoords[:, 2]
@@ -153,21 +155,23 @@ def crop_or_padding_to_fixed_size_instance(img, mask, hcoords, th, tw, overlap_r
         nh, nw, _ = img.shape
         new_img = np.zeros([th, tw, 3], dtype=img.dtype)
         new_mask = np.zeros([th, tw], dtype=mask.dtype)
+        new_amodal_mask = np.zeros([th, tw], dtype=amodal_mask.dtype)
 
         hbeg = 0 if not hpad else (th - h) // 2
         wbeg = 0 if not wpad else (tw - w) // 2
 
         new_img[hbeg:hbeg + nh, wbeg:wbeg + nw] = img
         new_mask[hbeg:hbeg + nh, wbeg:wbeg + nw] = mask
+        new_amodal_mask[hbeg:hbeg + nh, wbeg:wbeg + nw] = amodal_mask
         hcoords[:, 0] += wbeg * hcoords[:, 2]
         hcoords[:, 1] += hbeg * hcoords[:, 2]
 
-        img, mask = new_img, new_mask
+        img, mask, amodal_mask = new_img, new_mask, new_amodal_mask
 
-    return img, mask, hcoords
+    return img, mask, amodal_mask, hcoords
 
 
-def crop_or_padding_to_fixed_size(img, mask, th, tw):
+def crop_or_padding_to_fixed_size(img, mask, amodal_mask, th, tw):
     h, w, _ = img.shape
     hpad, wpad = th >= h, tw >= w
 
@@ -179,21 +183,24 @@ def crop_or_padding_to_fixed_size(img, mask, th, tw):
 
     img = img[hbeg:hend, wbeg:wend]
     mask = mask[hbeg:hend, wbeg:wend]
+    amodal_mask = amodal_mask[hbeg:hend, wbeg:wend]
 
     if hpad or wpad:
         nh, nw, _ = img.shape
         new_img = np.zeros([th, tw, 3], dtype=img.dtype)
         new_mask = np.zeros([th, tw], dtype=mask.dtype)
+        new_amodal_mask = np.zeros([th, tw], dtype=amodal_mask.dtype)
 
         hbeg = 0 if not hpad else (th - h) // 2
         wbeg = 0 if not wpad else (tw - w) // 2
 
         new_img[hbeg:hbeg + nh, wbeg:wbeg + nw] = img
         new_mask[hbeg:hbeg + nh, wbeg:wbeg + nw] = mask
+        new_amodal_mask[hbeg:hbeg + nh, wbeg:wbeg + nw] = amodal_mask
 
-        img, mask = new_img, new_mask
+        img, mask, amodal_mask = new_img, new_mask, new_amodal_mask
 
-    return img, mask
+    return img, mask, amodal_mask
 
 
 def mask_out_instance(img, mask, min_side=0.1, max_side=0.3):
@@ -263,7 +270,7 @@ def compute_resize_range(mask, hmin, hmax, wmin, wmax):
 
 
 #### higher level api #####
-def crop_resize_instance_v1(img, mask, hcoords, imheight, imwidth,
+def crop_resize_instance_v1(img, mask, amodal_mask, hcoords, imheight, imwidth,
                             overlap_ratio=0.5, ratio_min=0.8, ratio_max=1.2):
     '''
 
@@ -271,6 +278,7 @@ def crop_resize_instance_v1(img, mask, hcoords, imheight, imwidth,
     which at least overlap with foreground bbox with overlap
     :param img:
     :param mask:
+    :param amodal_mask:
     :param hcoords:
     :param imheight:
     :param imwidth:
@@ -283,16 +291,17 @@ def crop_resize_instance_v1(img, mask, hcoords, imheight, imwidth,
     target_height = int(imheight * resize_ratio)
     target_width = int(imwidth * resize_ratio)
 
-    img, mask, hcoords = crop_or_padding_to_fixed_size_instance(
-        img, mask, hcoords, target_height, target_width, overlap_ratio)
+    img, mask, amodal_mask, hcoords = crop_or_padding_to_fixed_size_instance(
+        img, mask, amodal_mask, hcoords, target_height, target_width, overlap_ratio)
 
     img = cv2.resize(img, (imwidth, imheight), interpolation=cv2.INTER_LINEAR)
     mask = cv2.resize(mask, (imwidth, imheight), interpolation=cv2.INTER_NEAREST)
+    amodal_mask = cv2.resize(amodal_mask, (imwidth, imheight), interpolation=cv2.INTER_NEAREST)
 
     hcoords[:, 0] = hcoords[:, 0] / resize_ratio
     hcoords[:, 1] = hcoords[:, 1] / resize_ratio
 
-    return img, mask, hcoords
+    return img, mask, amodal_mask, hcoords
 
 
 def crop_resize_instance_v2(img, mask, hcoords, imheight, imwidth,

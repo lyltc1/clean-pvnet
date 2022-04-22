@@ -67,7 +67,7 @@ def read_linemod_mask(path, ann_type, cls_idx):
         return (np.asarray(Image.open(path))).astype(np.uint8)
 
 
-def read_linemod_amodal_mask(path, ann_type, cls_idx):
+def read_linemod_amodal_mask(path, ann_type):
     if ann_type == 'real':
         mask = np.array(Image.open(path))
         if len(mask.shape) == 3:

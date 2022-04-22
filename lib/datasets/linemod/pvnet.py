@@ -43,15 +43,16 @@ class Dataset(data.Dataset):
 
         img, kpt_2d, mask, amodal_mask = self.read_data(img_id)
         if self.split == 'train':
-            inp, kpt_2d, mask = self.augment(img, mask, amodal_mask, kpt_2d, height, width)
+            inp, kpt_2d, mask, amodal_mask = self.augment(img, mask, amodal_mask, kpt_2d, height, width)
         else:
             inp = img
 
         if self._transforms is not None:
-            inp, kpt_2d, mask = self._transforms(inp, kpt_2d, mask)
+            inp, kpt_2d, mask, amodal_mask = self._transforms(inp, kpt_2d, mask, amodal_mask)
 
         vertex = pvnet_data_utils.compute_vertex(mask, kpt_2d).transpose(2, 0, 1)
-        ret = {'inp': inp, 'mask': mask.astype(np.uint8), 'vertex': vertex, 'img_id': img_id, 'meta': {}}
+        ret = {'inp': inp, 'mask': mask.astype(np.uint8), 'amodal_mask': amodal_mask.astype(np.uint8),
+               'vertex': vertex, 'img_id': img_id, 'meta': {}}
         # visualize_utils.visualize_linemod_ann(torch.tensor(inp), kpt_2d, mask, True)
 
         return ret
@@ -61,7 +62,7 @@ class Dataset(data.Dataset):
 
     def augment(self, img, mask, amodal_mask, kpt_2d, height, width):
         # add one column to kpt_2d for convenience to calculate
-        hcoords = np.concatenate((kpt_2d, np.ones((9, 1))), axis=-1)
+        hcoords = np.concatenate((kpt_2d, np.ones((kpt_2d.shape[0], 1))), axis=-1)
         img = np.asarray(img).astype(np.uint8)
         foreground = np.sum(mask)
         # randomly mask out to add occlusion
@@ -77,4 +78,4 @@ class Dataset(data.Dataset):
             img, mask, amodal_mask = crop_or_padding_to_fixed_size(img, mask, amodal_mask, height, width)
         kpt_2d = hcoords[:, :2]
 
-        return img, kpt_2d, mask
+        return img, kpt_2d, mask, amodal_mask

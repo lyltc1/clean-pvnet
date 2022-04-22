@@ -12,10 +12,10 @@ class Compose(object):
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, img, kpts=None, mask=None):
+    def __call__(self, img, kpts=None, mask=None, amodal_mask=None):
         for t in self.transforms:
-            img, kpts, mask = t(img, kpts, mask)
-        return img, kpts, mask
+            img, kpts, mask, amodal_mask = t(img, kpts, mask, amodal_mask)
+        return img, kpts, mask, amodal_mask
 
     def __repr__(self):
         format_string = self.__class__.__name__ + "("
@@ -28,8 +28,8 @@ class Compose(object):
 
 class ToTensor(object):
 
-    def __call__(self, img, kpts, mask):
-        return np.asarray(img).astype(np.float32) / 255., kpts, mask
+    def __call__(self, img, kpts, mask, amodal_mask):
+        return np.asarray(img).astype(np.float32) / 255., kpts, mask, amodal_mask
 
 
 class Normalize(object):
@@ -39,12 +39,12 @@ class Normalize(object):
         self.std = std
         self.to_bgr = to_bgr
 
-    def __call__(self, img, kpts, mask):
+    def __call__(self, img, kpts, mask, amodal_mask):
         img -= self.mean
         img /= self.std
         if self.to_bgr:
             img = img.transpose(2, 0, 1).astype(np.float32)
-        return img, kpts, mask
+        return img, kpts, mask, amodal_mask
 
 
 class ColorJitter(object):
@@ -61,9 +61,9 @@ class ColorJitter(object):
             saturation=saturation,
             hue=hue,)
 
-    def __call__(self, image, kpts, mask):
+    def __call__(self, image, kpts, mask, amodal_mask):
         image = np.asarray(self.color_jitter(Image.fromarray(np.ascontiguousarray(image, np.uint8))))
-        return image, kpts, mask
+        return image, kpts, mask, amodal_mask
 
 
 class RandomBlur(object):
@@ -71,11 +71,11 @@ class RandomBlur(object):
     def __init__(self, prob=0.5):
         self.prob = prob
 
-    def __call__(self, image, kpts, mask):
+    def __call__(self, image, kpts, mask, amodal_mask):
         if random.random() < self.prob:
             sigma = np.random.choice([3, 5, 7, 9])
             image = cv2.GaussianBlur(image, (sigma, sigma), 0)
-        return image, kpts, mask
+        return image, kpts, mask, amodal_mask
 
 
 def make_transforms(cfg, is_train):

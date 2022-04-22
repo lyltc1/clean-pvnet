@@ -215,9 +215,11 @@ def record_fuse_ann(model_meta, img_id, ann_id, images, annotations):
         fps_2d = project(fps_3d, K, pose)
 
         amodal_mask_path = os.path.join(amodal_mask_dir, '{}.png'.format(ind))
-        depth_img = renderer.render(pose, K, img_size, render_type='depth')
-        amodal_mask_img = (depth_img > 0).astype(np.uint8) * 255
-        Image.fromarray(amodal_mask_img).save(amodal_mask_path)
+        if not os.path.exists(amodal_mask_path):
+            depth_img = renderer.render(pose, K, img_size, render_type='depth')
+            amodal_mask_img = (depth_img > 0).astype(np.uint8) * 255
+            amodal_mask_img = Image.fromarray(amodal_mask_img)
+            amodal_mask_img.save(amodal_mask_path)
 
         ann_id += 1
         anno = {'mask_path': mask_path, 'amodal_mask_path': amodal_mask_path,
@@ -306,12 +308,16 @@ def _linemod_to_coco(cls, split):
     annotations = []
 
     if split == 'occ':
+        print("start recording occlusion annotations")
         img_id, ann_id = record_occ_ann(model_meta, img_id, ann_id, images, annotations)
     elif split == 'train' or split == 'test':
+        print("start recording real annotations for {}".format(split))
         img_id, ann_id = record_real_ann(model_meta, img_id, ann_id, images, annotations)
 
     if split == 'train':
+        print("start recording fuse annotations")
         img_id, ann_id = record_fuse_ann(model_meta, img_id, ann_id, images, annotations)
+        print("start recording render annotations")
         img_id, ann_id = record_render_ann(model_meta, img_id, ann_id, images, annotations)
 
     categories = [{'supercategory': 'none', 'id': 1, 'name': cls}]
