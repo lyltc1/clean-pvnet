@@ -176,6 +176,10 @@ python run.py --type visualize --cfg_file configs/tless/tless_01.yaml test.det_g
 
 1. Prepare the data related to `cat`:
     ```
+    export PYGLFW_LIBRARY=~/glfw/src/libglfw.so
+    https://stackoverflow.com/questions/54483960/pyopengl-headless-rendering
+    xvfb
+    xvfb-run 如果在服务器上跑，前面加这几行字会开一个虚拟窗口，不然glfw运行不了
     python run.py --type linemod cls_type cat
     ```
 2. Train:
