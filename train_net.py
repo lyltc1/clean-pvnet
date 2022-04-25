@@ -1,3 +1,4 @@
+""" python train_net.py --cfg_file configs/epnet_linemod.yaml model mycat cls_type cat """
 from lib.config import cfg, args
 from lib.networks import make_network
 from lib.train import make_trainer, make_optimizer, make_lr_scheduler, make_recorder, set_lr_scheduler

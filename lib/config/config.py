@@ -108,7 +108,8 @@ cfg.tless.ratio = 0.8
 _heads_factory = {
     'pvnet': CN({'vote_dim': 18, 'seg_dim': 2}),
     'ct_pvnet': CN({'vote_dim': 18, 'seg_dim': 2}),
-    'ct': CN({'ct_hm': 30, 'wh': 2})
+    'ct': CN({'ct_hm': 30, 'wh': 2}),
+    'epnet': CN({'num_keypoints': 9})
 }
 
 
