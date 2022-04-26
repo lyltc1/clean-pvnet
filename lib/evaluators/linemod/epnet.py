@@ -93,14 +93,20 @@ class Evaluator:
             self.cmd5.append(translation_distance < 5 and angular_distance < 5)
 
     def mask_iou(self, output, batch):
-        mask_pred = torch.argmax(output['mask'], dim=1)[0].detach().cpu().numpy()
+        mask = output['mask']
+        mask[mask > 0.5] = 1
+        mask[mask <= 0.5] = 0
+        mask_pred = mask[0].detach().cpu().numpy().astype(np.uint8)
         mask_gt = batch['mask'][0].detach().cpu().numpy()
         iou = (mask_pred & mask_gt).sum() / (mask_pred | mask_gt).sum()
         self.mask_ap.append(iou > 0.7)
 
     def icp_refine(self, pose_pred, anno, output, K):
         depth = read_depth(anno['depth_path'])
-        mask = torch.argmax(output['mask'], dim=1)[0].detach().cpu().numpy()
+        mask = output['mask']
+        mask[mask > 0.5] = 1.
+        mask[mask <= 0.5] = 0.
+        mask = mask.detach().cpu().numpy()
         if pose_pred[2, 3] <= 0:
             return pose_pred
         depth[mask != 1] = 0
@@ -132,7 +138,10 @@ class Evaluator:
 
     def icp_refine_(self, pose, anno, output):
         depth = read_depth(anno['depth_path']).astype(np.uint16)
-        mask = torch.argmax(output['mask'], dim=1)[0].detach().cpu().numpy()
+        mask = output['mask']
+        mask[mask > 0.5] = 1.
+        mask[mask <= 0.5] = 0.
+        mask = mask.detach().cpu().numpy()
         mask = mask.astype(np.int32)
         pose = pose.astype(np.float32)
 

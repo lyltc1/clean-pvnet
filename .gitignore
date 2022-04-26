@@ -12,3 +12,4 @@ __pycache__/
 *.npy
 *log
 *build*
+assets/visualize_linemod_ann*
