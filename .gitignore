@@ -10,6 +10,7 @@ __pycache__/
 *.jpg
 *.ipynb
 *.npy
-*log
+*log*
 *build*
 assets/visualize_linemod_ann*
+configs/epnet*.yaml
