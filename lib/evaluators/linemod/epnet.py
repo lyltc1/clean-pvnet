@@ -12,13 +12,15 @@ if cfg.test.icp:
 if cfg.test.un_pnp:
     from lib.csrc.uncertainty_pnp import un_pnp_utils
     import scipy
+if cfg.test.edge_refine:
+    from lib.csrc.edge_refine.build.examples.edge_refine import py_edge_refine
 from PIL import Image
 from lib.utils.img_utils import read_depth
 from scipy import spatial
 from lib.utils.vsd import inout
 from transforms3d.quaternions import mat2quat, quat2mat
 from lib.csrc.nn import nn_utils
-
+import cv2
 
 class Evaluator:
 
@@ -32,8 +34,8 @@ class Evaluator:
 
         data_root = args['data_root']
         cls = cfg.cls_type
-        model_path = os.path.join('data/linemod', cls, cls + '.ply')
-        self.model = pvnet_data_utils.get_ply_model(model_path)
+        self.model_path = os.path.join('data/linemod', cls, cls + '.ply')
+        self.model = pvnet_data_utils.get_ply_model(self.model_path)
         self.diameter = linemod_config.diameters[cls] / 100
 
         self.proj2d = []
@@ -44,28 +46,34 @@ class Evaluator:
         self.icp_add = []
         self.icp_cmd5 = []
 
+        self.edge_refine_proj2d = []
+        self.edge_refine_add = []
+        self.edge_refine_cmd5 = []
+
         self.mask_ap = []
 
         self.height = 480
         self.width = 640
 
-        model = inout.load_ply(model_path)
+        model = inout.load_ply(self.model_path)
         model['pts'] = model['pts'] * 1000
         self.icp_refiner = icp_utils.ICPRefiner(model, (self.width, self.height)) if cfg.test.icp else None
         # if cfg.test.icp:
         #     self.icp_refiner = ext_.Synthesizer(os.path.realpath(model_path))
         #     self.icp_refiner.setup(self.width, self.height)
 
-    def projection_2d(self, pose_pred, pose_targets, K, icp=False, threshold=5):
+    def projection_2d(self, pose_pred, pose_targets, K, icp=False, edge_refine=False, threshold=5):
         model_2d_pred = pvnet_pose_utils.project(self.model, K, pose_pred)
         model_2d_targets = pvnet_pose_utils.project(self.model, K, pose_targets)
         proj_mean_diff = np.mean(np.linalg.norm(model_2d_pred - model_2d_targets, axis=-1))
         if icp:
             self.icp_proj2d.append(proj_mean_diff < threshold)
+        elif edge_refine:
+            self.edge_refine_proj2d.append(proj_mean_diff < threshold)
         else:
             self.proj2d.append(proj_mean_diff < threshold)
 
-    def add_metric(self, pose_pred, pose_targets, icp=False, syn=False, percentage=0.1):
+    def add_metric(self, pose_pred, pose_targets, icp=False, edge_refine=False, syn=False, percentage=0.1):
         diameter = self.diameter * percentage
         model_pred = np.dot(self.model, pose_pred[:, :3].T) + pose_pred[:, 3]
         model_targets = np.dot(self.model, pose_targets[:, :3].T) + pose_targets[:, 3]
@@ -78,10 +86,12 @@ class Evaluator:
 
         if icp:
             self.icp_add.append(mean_dist < diameter)
+        elif edge_refine:
+            self.edge_refine_add.append(mean_dist < diameter)
         else:
             self.add.append(mean_dist < diameter)
 
-    def cm_degree_5_metric(self, pose_pred, pose_targets, icp=False):
+    def cm_degree_5_metric(self, pose_pred, pose_targets, icp=False, edge_refine=False):
         translation_distance = np.linalg.norm(pose_pred[:, 3] - pose_targets[:, 3]) * 100
         rotation_diff = np.dot(pose_pred[:, :3], pose_targets[:, :3].T)
         trace = np.trace(rotation_diff)
@@ -89,6 +99,8 @@ class Evaluator:
         angular_distance = np.rad2deg(np.arccos((trace - 1.) / 2.))
         if icp:
             self.icp_cmd5.append(translation_distance < 5 and angular_distance < 5)
+        elif edge_refine:
+            self.edge_refine_cmd5.append(translation_distance < 5 and angular_distance < 5)
         else:
             self.cmd5.append(translation_distance < 5 and angular_distance < 5)
 
@@ -119,6 +131,42 @@ class Evaluator:
         pose_pred = np.hstack((R_refined, t_refined.reshape((3, 1)) / 1000))
 
         return pose_pred
+
+    def edge_refine(self, pose_pred, anno, output, K):
+        pose_pred_init = pose_pred.copy()
+        try:
+            # preprocess mask
+            mask = output['mask']
+            mask[mask > 0.5] = 1.
+            mask[mask <= 0.5] = 0.
+            mask = mask.detach().cpu().numpy()[0]
+            mask = np.uint8(mask * 255.)
+            # preprocess amodal_mask
+            amodal_mask = output['amodal_mask']
+            amodal_mask[amodal_mask > 0.5] = 1.
+            amodal_mask[amodal_mask <= 0.5] = 0.
+            amodal_mask = amodal_mask.detach().cpu().numpy()[0]
+            amodal_mask = np.uint8(amodal_mask * 255.)
+            # get visible contour
+            contours, hierarchy = cv2.findContours(amodal_mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            contours = [contour for contour in contours if len(contour) >= 50]
+            if contours is None:
+                print("can not find contour whose length longer than 50 pixels")
+                return
+            contour = contours[0]  # contours:tuple(N,1,2)
+            visible_contour = np.empty(shape=(0, 2))
+            for i in range(len(contour)):
+                x, y = contour[i, 0]  # [x,y]
+                if np.any(mask[y - 2:y + 2, x - 2:x + 2]):
+                    visible_contour = np.append(visible_contour, contour[i], axis=0)
+            # get init_R, init_t
+            R = pose_pred_init[:, :3]
+            t = pose_pred_init[:, 3]
+            R_refined, t_refined = py_edge_refine(R, t, visible_contour, self.model_path, "./")
+            pose_pred_refined = np.concatenate([R_refined, t_refined.reshape(3,1)], axis=1)
+        except:
+            return pose_pred
+        return pose_pred_refined
 
     def uncertainty_pnp(self, kpt_3d, kpt_2d, var, K):
         cov_invs = []
@@ -204,6 +252,15 @@ class Evaluator:
             self.projection_2d(pose_pred_icp, pose_gt, K, icp=True)
             self.cm_degree_5_metric(pose_pred_icp, pose_gt, icp=True)
 
+        if cfg.test.edge_refine:
+            pose_pred_edge_refine = self.edge_refine(pose_pred.copy(), anno, output, K)
+            if cfg.cls_type in ['eggbox', 'glue']:
+                self.add_metric(pose_pred_edge_refine, pose_gt, syn=True, edge_refine=True)
+            else:
+                self.add_metric(pose_pred_edge_refine, pose_gt, edge_refine=True)
+            self.projection_2d(pose_pred_edge_refine, pose_gt, K, edge_refine=True)
+            self.cm_degree_5_metric(pose_pred_edge_refine, pose_gt, edge_refine=True)
+
         if cfg.cls_type in ['eggbox', 'glue']:
             self.add_metric(pose_pred, pose_gt, syn=True)
         else:
@@ -225,6 +282,10 @@ class Evaluator:
             print('2d projections metric after icp: {}'.format(np.mean(self.icp_proj2d)))
             print('ADD metric after icp: {}'.format(np.mean(self.icp_add)))
             print('5 cm 5 degree metric after icp: {}'.format(np.mean(self.icp_cmd5)))
+        if cfg.test.edge_refine:
+            print('2d projections metric after edge_refine: {}'.format(np.mean(self.edge_refine_proj2d)))
+            print('ADD metric after edge_refine: {}'.format(np.mean(self.edge_refine_add)))
+            print('5 cm 5 degree metric after edge_reine: {}'.format(np.mean(self.edge_refine_cmd5)))
         self.proj2d = []
         self.add = []
         self.cmd5 = []

@@ -68,13 +68,14 @@ cfg.train.batch_sampler = ''
 
 # test
 cfg.test = CN()
-cfg.test.dataset = 'CocoVal'
+cfg.test.dataset = ''
 cfg.test.batch_size = 1
 cfg.test.epoch = -1
 cfg.test.icp = False
 cfg.test.un_pnp = False
 cfg.test.vsd = False
 cfg.test.det_gt = False
+cfg.test.edge_refine = False
 
 cfg.test.batch_sampler = ''
 

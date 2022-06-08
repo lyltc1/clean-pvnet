@@ -113,7 +113,7 @@ def record_occ_ann(model_meta, img_id, ann_id, images, annotations):
                 'depth_{:05d}.png'.format(ind))
         amodal_mask_path = os.path.join(data_root, 'amodal_masks', cls, '{}.png'.format(ind))
         ann_id += 1
-        anno = {'mask_path': mask_path, 'depth_path': depth_path, 'amodal_masks_path': amodal_mask_path,
+        anno = {'mask_path': mask_path, 'depth_path': depth_path, 'amodal_mask_path': amodal_mask_path,
                 'image_id': img_id, 'category_id': 1, 'id': ann_id}
         anno.update({'corner_3d': corner_3d.tolist(), 'corner_2d': corner_2d.tolist()})
         anno.update({'center_3d': center_3d.tolist(), 'center_2d': center_2d.tolist()})

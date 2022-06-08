@@ -65,7 +65,7 @@ class Dataset(data.Dataset):
         vertex = pvnet_data_utils.compute_vertex(mask, kpt_2d).transpose(2, 0, 1)
         ret = {'inp': inp, 'mask': mask.astype(np.uint8), 'amodal_mask': amodal_mask.astype(np.uint8),
                'vertex': vertex, 'img_id': img_id, 'meta': {}}
-        visualize_utils.visualize_linemod_ann(torch.tensor(inp), kpt_2d, mask, amodal_mask, False)
+        # visualize_utils.visualize_linemod_ann(torch.tensor(inp), kpt_2d, mask, amodal_mask, False)
 
         return ret
 

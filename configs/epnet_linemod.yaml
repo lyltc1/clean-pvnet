@@ -25,3 +25,4 @@ test:
     dataset: 'LinemodTest'
     batch_size: 1
     batch_sampler: 'image_size'
+    edge_refine: True  # use edge optimization to refine results
